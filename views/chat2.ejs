@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Application</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-screen bg-gray-100 flex items-center justify-center">
+  <div class="w-[90%] max-w-4xl h-[90%] bg-white rounded-lg shadow-xl overflow-hidden">
+    <div class="flex h-full">
+      <!-- Online Users Section -->
+      <div class="w-1/4 bg-white shadow-lg p-4 overflow-y-auto">
+        <h2 class="text-lg font-bold mb-4">Online Users</h2>
+        <div id="online-users" class="space-y-4">
+          <!-- Each user card as a div -->
+           <%online.forEach(ouser=>{%>
+            
+          <div   onclick="selectChat('<%= ouser.socketId %>')"   class="user-card flex items-center space-x-4 p-2 bg-gray-100 rounded-lg cursor-pointer" 
+               data-username="<%=ouser.name%>" 
+               data-picture="<%=ouser.image%>"
+               data-status="<%=ouser.status%>" 
+               data-user-id="<%=ouser._id%>"
+               id="user-<%= ouser.socketId %>">
+            <img src="<%=ouser.image%>"  class="w-10 h-10 rounded-full">
+            <span class="font-medium"><%=ouser.name%></span>
+          </div>
+          <%})%>
+        </div>
+      </div>
+
+      <!-- Conversation Section -->
+      <div id="conversation-section" class="flex-1 flex flex-col hidden">
+        <!-- Conversation Header -->
+        <div id="conversation-header" class="flex items-center space-x-4 p-4 bg-gray-200 border-b">
+          <img id="user-picture" src="https://via.placeholder.com/40" alt="User Picture" class="w-10 h-10 rounded-full">
+          <div>
+            <span id="user-name" class="text-lg font-semibold">User Name</span>
+            <div id="user-status" class="text-sm text-gray-500">Status</div>
+          </div>
+        </div>
+        <!-- Messages Area -->
+        <div id="messages" class="flex-1 p-4 overflow-y-auto">
+          <div class="space-y-4">
+            <!-- No messages initially -->
+          </div>
+        </div>
+
+        <!-- Message Input Box -->
+        <div class="p-4 bg-white border-t shadow-lg">
+          <form id="message-form" class="flex items-center space-x-2">
+            <input 
+              type="text" 
+              id="message-input" 
+              class="flex-1 p-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-300" 
+              placeholder="Type a message...">
+            <button 
+              type="submit" 
+              class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none">
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const user = JSON.parse('<%- JSON.stringify(user) %>');
+    const socket = io();
+    let receiverId = '';
+
+     socket.emit('join', user._id)
+
+     
+
+     function selectChat(socketId)
+     {
+      receiverId=socketId;
+      
+     }
+
+    // Get DOM elements
+    const onlineUsersContainer = document.getElementById("online-users");
+    const conversationSection = document.getElementById("conversation-section");
+    const userNameElement = document.getElementById("user-name");
+    const userPictureElement = document.getElementById("user-picture");
+    const userStatusElement = document.getElementById("user-status");
+    const messagesContainer = document.getElementById("messages");
+    const messageForm = document.getElementById("message-form");
+    const messageInput = document.getElementById("message-input");
+
+    // Handle user clicks
+    onlineUsersContainer.addEventListener("click", (e) => {
+      const userCard = e.target.closest(".user-card");
+      if (userCard) {
+        const username = userCard.getAttribute("data-username");
+        const picture = userCard.getAttribute("data-picture");
+        const status = userCard.getAttribute("data-status");
+
+        // Update conversation header
+        userNameElement.textContent = username;
+        userPictureElement.src = picture;
+        userStatusElement.textContent = status;
+
+        // Show the conversation section
+        conversationSection.classList.remove("hidden");
+      }
+    });
+
+    // Function to remove a user from the list
+    function removeUser(userId) {
+      const userCard = document.getElementById(userId);
+      if (userCard) {
+        userCard.remove();
+      }
+    }
+
+    // Example: Simulate a user going offline
+    setTimeout(() => {
+      console.log("User 2 is offline.");
+      removeUser("user-2");
+    }, 5000);
+
+
+
+    // Handle form submission for sending messages
+    messageForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+
+      const message = messageInput.value.trim();
+      if (message) {
+        addMessageToConversation(message, "sent");
+        socket.emit("chatMessage", { message, receiverId }); // Send message to the server
+        messageInput.value = ""; // Clear input
+      }
+    });
+    // Add a new message to the conversation area
+    function addMessageToConversation(message, type) {
+      const messageDiv = document.createElement("div");
+      messageDiv.classList.add("flex", type === "sent" ? "justify-end" : "justify-start",    "mb-3");
+      messageDiv.innerHTML = `
+        <div class="p-3 rounded-lg max-w-sm ${
+          type === "sent" ? "bg-blue-500 text-white" : "bg-green-500 text-white"
+        }">
+          ${message}
+        </div>
+      `;
+      messagesContainer.appendChild(messageDiv);
+
+      // Auto-scroll to the latest message
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    
+    socket.on('userUpdated', (data) => {
+    const { userId, socketId } = data;
+
+    // Find the user's card and update its ID and socket ID
+    const userCard = document.querySelector(`[data-user-id="${userId}"]`);
+    if (userCard) {
+      userCard.setAttribute('id', `user-${socketId}`);
+      userCard.setAttribute('onclick', `selectChat('${socketId}')`);
+      console.log(`User ${userId}'s socketId updated to ${socketId}`);
+    }
+  });
+
+  let typingTimeout;
+
+messageInput.addEventListener("input", () => {
+    if (receiverId) {
+        socket.emit("typing", { receiverId, senderName: userNameElement.innerHTML});
+
+        // Stop typing after a delay
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+            socket.emit("stopTyping", { receiverId });
+        }, 1000); // 1 second delay
+    }
+});
+
+socket.on("typing", (data) => {
+    userStatusElement.textContent = `typing...`;
+});
+
+// Remove typing status
+socket.on("stopTyping", () => {
+    userStatusElement.textContent = "Online"; // Reset status or set a default
+});
+
+    socket.on('chatMessage', (data) => {
+      addMessageToConversation(data.message, "received");
+        })
+  
+
+  </script>
+</body>
+</html>
